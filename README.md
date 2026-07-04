@@ -35,7 +35,8 @@ you unpack it.
 
 You'll now have a normal folder called `marvelcdb-deck-downloader-main`. Move it
 somewhere safe that you won't clean out later, like your Documents folder. The extension
-runs straight from this folder, so if you delete it, the extension stops working.
+runs straight from this folder. If you move or delete it, the extension will stop
+working the next time you restart your browser.
 
 ### Step 3: Add it to Chrome
 
