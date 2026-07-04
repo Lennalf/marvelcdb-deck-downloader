@@ -310,7 +310,7 @@
 
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(deck.name)} — deck backup</title>
+<title>${esc(deck.name)} (MarvelCDB Deck Downloader)</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font:15px/1.55 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;background:#fff}
@@ -378,7 +378,7 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
       .join('');
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MarvelCDB deck backup (${entries.length} decks)</title>
+<title>MarvelCDB Deck Downloader (${entries.length} decks)</title>
 <style>
 body{margin:0;font:15px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;background:#fff}
 .wrap{max-width:860px;margin:0 auto;padding:24px}
@@ -391,7 +391,7 @@ a{color:#1a5fb4;text-decoration:none}a:hover{text-decoration:underline}
 tr:hover td{background:#f7f9fc}
 </style></head>
 <body><div class="wrap">
-<h1>MarvelCDB deck backup</h1>
+<h1>MarvelCDB Deck Downloader</h1>
 <div class="sub">${entries.length} deck${entries.length === 1 ? '' : 's'} · backed up ${new Date().toISOString().slice(0, 10)}</div>
 <table><thead><tr><th>Deck</th><th>Hero</th><th class="c">Notes</th></tr></thead><tbody>${rows}</tbody></table>
 </div></body></html>`;

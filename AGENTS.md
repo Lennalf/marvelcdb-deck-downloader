@@ -35,6 +35,18 @@ and vendor it into `src/` instead. `build.sh` only zips existing files.
   in `manifest.json` `content_scripts.js`.
 - 2-space indent, semicolons, `const`/`let`, arrow functions, single quotes.
 - Comment the *why*, not the *what*. Match the surrounding density.
+
+## Voice of user-facing text
+
+Anything a user reads — the README and every string in the extension UI — should
+sound like a warm, plain-spoken human designer wrote it, not an AI. Concretely:
+
+- No em dashes. Use a period, comma, parentheses, or "and" instead.
+- No AI-tell jargon or filler: "load-bearing", "delve", "seamless", "leverage",
+  "robust", "it's worth noting", "in the world of…". Say the plain thing.
+- Short, friendly sentences. Speak to the reader as "you". Explain the *why* when it
+  helps trust (e.g. "nothing leaves your browser"), but don't lecture.
+- Code comments and these governance docs are exempt — this rule is about text users see.
 - Be a good guest to marvelcdb.com: single-flight requests, throttled, honor
   `Retry-After`. Never add parallel fetching. See the throttling notes in README.
 

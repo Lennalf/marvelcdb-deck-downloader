@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION=$(node -p "require('./manifest.json').version")
-OUT="dist/marvelcdb-deck-backup-v${VERSION}.zip"
+OUT="dist/marvelcdb-deck-downloader-v${VERSION}.zip"
 
 mkdir -p dist
 rm -f "$OUT"

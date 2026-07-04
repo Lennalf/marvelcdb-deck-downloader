@@ -76,7 +76,7 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
     const btn = document.createElement('button');
     btn.id = 'mcb-btn';
     btn.type = 'button';
-    btn.innerHTML = ICON + '<span>Back up my decks</span>';
+    btn.innerHTML = ICON + '<span>Download my decks</span>';
     btn.addEventListener('click', () => onRun());
     const mount = () => {
       if (document.body && !document.getElementById('mcb-btn')) document.body.appendChild(btn);
@@ -98,7 +98,7 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
     panel.innerHTML = `
 <div class="mcb-head">
   <span class="mcb-ico">${ICON}</span>
-  <span class="mcb-title">Deck Backup</span>
+  <span class="mcb-title">Deck Downloader</span>
   <span class="mcb-status" data-status>Starting…</span>
   <button class="mcb-x" data-close title="Close" aria-label="Close">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -213,7 +213,7 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
       download({ index, total, name, fail }) {
         setTrack(el.w, index / total);
         el.w.count.textContent = index + ' / ' + total;
-        el.w.detail.textContent = 'Deck ' + index + ' of ' + total + ': ' + (name || '—');
+        el.w.detail.textContent = 'Deck ' + index + ' of ' + total + ': ' + (name || '(unnamed)');
         el.w.detail.classList.toggle('mcb-warn', fail > 0);
         if (fail > 0) el.w.detail.textContent += '  ·  ' + fail + ' failed';
       },
@@ -281,8 +281,8 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
             status === 'error'
               ? 'Error: ' + (data.message || 'unknown')
               : status === 'empty'
-                ? 'No decks found — are you logged in? Open marvelcdb.com/decks to check.'
-                : 'Cancelled — nothing was downloaded.';
+                ? 'No decks found. Are you logged in? Open marvelcdb.com/decks to check.'
+                : 'Cancelled. Nothing was downloaded.';
           addBtn('Close', false, close);
         }
       },
