@@ -20,7 +20,7 @@
   "host_permissions": ["https://marvelcdb.com/*", "https://*.marvelcdb.com/*"],
   "content_scripts": [
     {
-      "matches": ["https://marvelcdb.com/*", "https://*.marvelcdb.com/*"],
+      "matches": ["https://marvelcdb.com/decks*", "https://*.marvelcdb.com/decks*"],
       "js": ["src/zip.js", "src/transform.js", "src/extract.js", "src/ui.js", "content.js"],
       "run_at": "document_idle"
     }

@@ -28,6 +28,11 @@ Everything runs **same-origin on marvelcdb.com** (a content script), so the user
 login cookie is sent automatically and there is no CORS wall. Requests are
 single-flight, spaced ~0.6 s with jitter, and back off honoring `Retry-After`.
 
+The content script is injected **only on the My Decks list pages** (`matches:
+https://marvelcdb.com/decks*`), so the launcher button appears there and nowhere else.
+It still reaches the per-deck and API endpoints below via same-origin `fetch()` from
+that page, so it never needs to be injected on `/deck/view/{id}` or the API paths.
+
 | #   | Request                                     | Freq                            | Auth                                                   | Purpose                                                                                                                                                                                                                                                         |
 | --- | ------------------------------------------- | ------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `GET /decks/{page}` (HTML)                  | per list page (~1 per 12 decks) | **session**                                            | Enumerate the user's personal deck IDs. The only listing that includes _unpublished_ decks. Paginated 12/page; we read deck IDs and the max page number from the pagination links. Default order is **`dateUpdate DESC`** (see incremental-backup doc).         |

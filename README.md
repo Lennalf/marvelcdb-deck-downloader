@@ -54,10 +54,14 @@ anywhere.
 
 ## Use
 
-1. Open [marvelcdb.com](https://marvelcdb.com) and make sure you're **logged in**.
-2. Either click the toolbar icon or the floating **Download my decks** button
-   (bottom-right of any marvelcdb.com page).
-3. A progress panel appears with two stages:
+1. Make sure you're **logged in** to [marvelcdb.com](https://marvelcdb.com).
+2. Go to your **My Decks** page at
+   [marvelcdb.com/decks](https://marvelcdb.com/decks). To keep it out of your way,
+   the downloader only appears here, on your deck list, and nowhere else on the site.
+   (Clicking the toolbar icon takes you straight to this page.)
+3. Click the floating **Download my decks** button in the bottom-right corner (or click
+   the toolbar icon again).
+4. A progress panel appears with two stages:
    - **Discovering decks:** it pages through your deck list to build the full set of
      IDs, showing "list page N of X" and a running deck count.
    - **Downloading decks:** it fetches each deck, showing "deck Y of Z: {name}" and a
