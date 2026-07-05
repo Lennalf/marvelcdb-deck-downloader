@@ -28,15 +28,25 @@
   function makeIdbKv() {
     const DB = 'mcb',
       STORE = 'backups';
-    const open = () =>
-      new Promise((res, rej) => {
-        const r = indexedDB.open(DB, 1);
-        r.onupgradeneeded = () => {
-          if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE);
-        };
-        r.onsuccess = () => res(r.result);
-        r.onerror = () => rej(r.error);
-      });
+    // Open once and reuse the connection for every op. On failure we clear the
+    // cached promise so a later call can retry a fresh open.
+    let dbPromise = null;
+    const open = () => {
+      if (!dbPromise) {
+        dbPromise = new Promise((res, rej) => {
+          const r = indexedDB.open(DB, 1);
+          r.onupgradeneeded = () => {
+            if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE);
+          };
+          r.onsuccess = () => res(r.result);
+          r.onerror = () => rej(r.error);
+        }).catch((e) => {
+          dbPromise = null;
+          throw e;
+        });
+      }
+      return dbPromise;
+    };
     const run = async (mode, fn) => {
       const db = await open();
       return new Promise((res, rej) => {
