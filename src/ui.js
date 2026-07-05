@@ -66,7 +66,16 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
 .mcb-log{max-height:110px;overflow:auto;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#8a94a6;
   border-top:1px solid #1e2634;padding-top:8px}
 .mcb-log div{white-space:pre-wrap;word-break:break-word}
-.mcb-log .mcb-err{color:#ff8a8a}`;
+.mcb-log .mcb-err{color:#ff8a8a}
+#mcb-modal{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;
+  background:rgba(6,9,15,.55);font:13px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+.mcb-modal-card{width:400px;max-width:calc(100vw - 40px);background:#111621;color:#e6e9ef;border:1px solid #283143;
+  border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.55);padding:18px}
+.mcb-modal-card *{box-sizing:border-box}
+.mcb-modal-title{font-weight:650;font-size:15px;margin-bottom:8px}
+.mcb-modal-text{color:#aeb6c4;font-size:12.5px;margin-bottom:16px}
+.mcb-modal-btns{display:flex;flex-direction:column;gap:8px}
+.mcb-modal-btns .mcb-btn2{flex:none}`;
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -88,6 +97,35 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
       hide: () => (btn.style.display = 'none'),
       show: () => (btn.style.display = ''),
     };
+  }
+
+  // Ask whether to do an incremental top-up or a full backup. Only shown when a
+  // prior backup exists on this browser. Resolves { mode: 'incremental' | 'full' }.
+  function chooseMode({ lastBackupAt }) {
+    injectStyles();
+    const when = String(lastBackupAt || '').slice(0, 10);
+    return new Promise((resolve) => {
+      const ov = document.createElement('div');
+      ov.id = 'mcb-modal';
+      ov.innerHTML = `
+<div class="mcb-modal-card">
+  <div class="mcb-modal-title">How much do you want to back up?</div>
+  <div class="mcb-modal-text">You last backed up on ${when}. An incremental top-up only fetches the decks
+  you added or changed since then, so it is quick and easy on marvelcdb. Unzip it over your previous
+  backup folder and every deck keeps working.</div>
+  <div class="mcb-modal-btns">
+    <button class="mcb-btn2 mcb-primary" data-inc>Incremental (since ${when})</button>
+    <button class="mcb-btn2" data-full>Full backup of everything</button>
+  </div>
+</div>`;
+      document.body.appendChild(ov);
+      const done = (mode) => {
+        ov.remove();
+        resolve({ mode });
+      };
+      ov.querySelector('[data-inc]').addEventListener('click', () => done('incremental'));
+      ov.querySelector('[data-full]').addEventListener('click', () => done('full'));
+    });
   }
 
   // Build the progress panel. handlers: { onPauseToggle, onCancel, onClose }.
@@ -253,13 +291,23 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
           el.w.track.classList.add('mcb-done');
           el.w.fill.style.width = '100%';
           el.w.detail.classList.remove('mcb-warn');
-          el.w.detail.textContent =
-            'Saved ' +
-            data.ok +
-            ' deck' +
-            (data.ok === 1 ? '' : 's') +
-            (data.fail ? ' · ' + data.fail + ' failed' : '') +
-            ' · ZIP downloaded';
+          if (data.mode === 'incremental') {
+            el.w.detail.textContent =
+              (data.changed
+                ? 'Backed up ' + data.changed + ' changed deck' + (data.changed === 1 ? '' : 's')
+                : 'No decks changed') +
+              (data.reused ? ' · ' + data.reused + ' unchanged' : '') +
+              (data.fail ? ' · ' + data.fail + ' failed' : '') +
+              ' · unzip over your old folder';
+          } else {
+            el.w.detail.textContent =
+              'Saved ' +
+              data.ok +
+              ' deck' +
+              (data.ok === 1 ? '' : 's') +
+              (data.fail ? ' · ' + data.fail + ' failed' : '') +
+              ' · ZIP downloaded';
+          }
           addBtn('Download again', true, data.rebuild);
           addBtn('Close', false, close);
         } else if (status === 'cancelled' && data.collected > 0) {
@@ -289,5 +337,5 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
     };
   }
 
-  MCB.ui = { ICON, injectStyles, makeLauncher, makePanel };
+  MCB.ui = { ICON, injectStyles, makeLauncher, makePanel, chooseMode };
 })();

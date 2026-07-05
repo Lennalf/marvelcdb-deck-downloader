@@ -1,9 +1,19 @@
 # Feature request: incremental backups
 
-**Status:** proposed (post-migration). Today every run does a full backup of all
-decks. This describes fetching **only decks added or updated since a timestamp**, so
-a user who has already done the big backup can top up cheaply without pummeling
-marvelcdb.com.
+**Status:** implemented in v1.3.0 (approach 1 below). A run now remembers the last
+backup time in `localStorage` (keyed by `user_id`) and offers an incremental top-up vs
+a full backup. The cache is treated as a *cache, never a source of truth*: if it is
+missing or from another account the run falls back to a full backup and rebuilds it, and
+every run still regenerates a complete `index.html` + `manifest.json` (unchanged decks
+carried from the cache) so a top-up ZIP unzipped over the old folder keeps a full index.
+Deletions are reflected because the merge drops cached decks no longer enumerated. See
+`content.js` (cache + merge/early-stop) and `src/transform.js` (`buildManifestEntry`,
+`buildIndexHtml`). The "detect the previous backup folder via the File System Access API
+and update it in place" idea below stays a possible later upgrade.
+
+The original proposal follows. Today every run does a full backup of all decks. This
+describes fetching **only decks added or updated since a timestamp**, so a user who has
+already done the big backup can top up cheaply without pummeling marvelcdb.com.
 
 ## Goal
 

@@ -61,6 +61,13 @@ anywhere.
    (Clicking the toolbar icon takes you straight to this page.)
 3. Click the floating **Download my decks** button in the bottom-right corner (or click
    the toolbar icon again).
+   - The **first time**, it does a full backup of everything.
+   - On later runs it asks whether you want a quick **incremental** top-up (just the
+     decks you added or changed since last time) or another **full** backup. The
+     incremental option is the easy default, and it is much kinder to marvelcdb because
+     it only fetches what changed. Unzip a top-up **over** your existing backup folder so
+     every deck stays in one place. (This memory lives only in your browser and is tied
+     to your account. If you ever clear it, the next run just does a full backup again.)
 4. A progress panel appears with two stages:
    - **Discovering decks:** it pages through your deck list to build the full set of
      IDs, showing "list page N of X" and a running deck count.
@@ -85,17 +92,19 @@ backup:
 - `decks/{id}-{name}.o8d`: **OCTGN** deck file matching MarvelCDB's OCTGN download.
 - `decks/{id}-{name}.html`: a standalone, print-friendly page that reproduces the
   MarvelCDB deck view. Decklist on the left (grouped by type, with quantities and card
-  **subtitles** so you can tell apart cards that share a name, like the two Spider-Man
+  **subtitles** so you can tell apart cards that share a name, like Spider-Man
   allies), notes on the right, plus the hero's nemesis "Hero set". Card names link to
   marvelcdb.com. It needs no styling or images, so you can print it and build the deck
   from paper. Card names come from MarvelCDB's public card database, fetched once per
   run.
-- `index.html`: a browsable table of every deck in the backup, linking to each page.
-  Open this first.
+- `index.html`: a browsable table of every deck in the backup (hero, aspect, tags, last
+  updated), with a link to each deck's page and to every raw format. Open this first.
 - `manifest.json`: a machine-readable index of every deck backed up.
 
-That's everything MarvelCDB keeps for a personal deck. Re-run it any time, and it always
-pulls a fresh, complete set.
+That's everything MarvelCDB keeps for a personal deck. The `index.html` and
+`manifest.json` always cover your **whole** collection, even after an incremental top-up,
+so the front door is never half-empty. Re-run any time: a full backup pulls a fresh,
+complete set, and a top-up refreshes just what changed.
 
 ## Security and privacy
 

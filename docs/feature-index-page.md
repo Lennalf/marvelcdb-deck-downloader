@@ -1,8 +1,18 @@
 # Feature request: richer HTML index page
 
-**Status:** proposed (post-migration). A basic `index.html` already ships — a
-static table of Deck / Hero / Notes linking to each deck's `.html`. This describes
-the upgrade.
+**Status:** partly implemented in v1.3.0. The table is now Deck / Hero / Aspect / Tags /
+Updated with a link to each deck's page and to every raw format, and each row carries
+`data-name/hero/aspect/tags` attributes so the search box below is a pure add-on. The
+manifest entry was widened (`buildManifestEntry` in `src/transform.js`) to carry the data
+these columns need, and the index is regenerated complete on every run (including
+incremental top-ups). Still to do from this doc: the search-as-you-type filtering, the
+side-sheet viewer, and sortable columns. When those land, the natural next step is the
+"static `index.html` shell + a regenerated `decks-data.js` loaded via `<script>` (so it
+works over `file://`)" split, which keeps the presentation stable while only the small
+data file changes each run.
+
+The original proposal follows. A basic `index.html` already ships. This describes the
+upgrade.
 
 ## Goal
 
