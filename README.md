@@ -62,19 +62,25 @@ anywhere.
 3. Click the floating **Download my decks** button in the bottom-right corner (or click
    the toolbar icon again).
    - The **first time**, it does a full backup of everything.
-   - On later runs it asks whether you want a quick **incremental** top-up (just the
-     decks you added or changed since last time) or another **full** backup. The
-     incremental option is the easy default, and it is much kinder to marvelcdb because
-     it only fetches what changed. Unzip a top-up **over** your existing backup folder so
-     every deck stays in one place. (This memory lives only in your browser and is tied
-     to your account. If you ever clear it, the next run just does a full backup again.)
-4. A progress panel appears with two stages:
-   - **Discovering decks:** it pages through your deck list to build the full set of
-     IDs, showing "list page N of X" and a running deck count.
+   - On later runs it automatically does a quick **top-up**: it checks your deck list and
+     only re-downloads the decks you have added or changed since last time, which is much
+     kinder to marvelcdb. Either way the ZIP you get is a **complete** backup of every
+     deck, so there is no unzipping "over" an old folder to worry about. The cache just
+     saves the downloading.
+   - This memory lives only in your browser and is tied to your MarvelCDB account, so if
+     more than one person uses the same computer, each person's backups stay separate.
+   - A small **Clear cached decks** button appears once you have a backup. You only need
+     it if something looks wrong. Clearing it just makes the next run a full backup again.
+4. A progress panel appears with two stages (on a top-up they read **Checking for
+   updates** and **Downloading new and updated decks**):
+   - **Discovering decks:** it pages through your deck list, showing "list page N of X"
+     and a running deck count. On a top-up this is also where it spots what changed.
    - **Downloading decks:** it fetches each deck, showing "deck Y of Z: {name}" and a
      progress bar, plus a running count of any that failed. You can **Pause/Resume** or
      **Cancel** at any point. If you cancel partway through, it offers to save the decks
-     collected so far. When it finishes, `marvelcdb-decks-backup-YYYY-MM-DD.zip`
+     collected so far, and it remembers what it already downloaded, so running it again
+     just picks up the rest instead of starting over. When it finishes,
+     `marvelcdb-decks-backup-YYYY-MM-DD.zip`
      downloads. An **Activity log** (collapsed by default) records any per-deck errors
      and server back-off notices.
 
@@ -101,10 +107,9 @@ backup:
   updated), with a link to each deck's page and to every raw format. Open this first.
 - `manifest.json`: a machine-readable index of every deck backed up.
 
-That's everything MarvelCDB keeps for a personal deck. The `index.html` and
-`manifest.json` always cover your **whole** collection, even after an incremental top-up,
-so the front door is never half-empty. Re-run any time: a full backup pulls a fresh,
-complete set, and a top-up refreshes just what changed.
+That's everything MarvelCDB keeps for a personal deck. **Every ZIP is a complete backup**
+of all your decks, whether it was a full run or a quick top-up, so `index.html` and
+`manifest.json` always cover your whole collection. Re-run any time.
 
 ## Security and privacy
 
@@ -114,10 +119,17 @@ one does and doesn't do:
 - **It runs entirely on your own computer.** There's no server behind it and no account
   to sign up for. Your decks are read, converted, and saved to a ZIP right in your
   browser. Nothing is ever uploaded, and there's no tracking or analytics of any kind.
+- **Its memory of your decks stays on your computer.** To make top-ups fast, it keeps a
+  copy of your decks in your browser's own storage between runs, so it only has to
+  re-download what changed. That copy is tied to your MarvelCDB account (so a shared
+  computer keeps people separate), it never leaves your machine, and the **Clear cached
+  decks** button wipes it whenever you like.
 - **It never sees your password or login.** It doesn't ask you to sign in and it doesn't
   touch the MarvelCDB login form. It just relies on your browser already being logged
-  in, the same way the site's own pages do. Your username, password, and session are
-  never read, stored, or sent anywhere.
+  in, the same way the site's own pages do. Your password and login session are never
+  read, stored, or sent anywhere. (It does read which account you're signed in as, from
+  data MarvelCDB already keeps in your browser, only so it can keep each account's backups
+  apart.)
 - **It only talks to marvelcdb.com.** Every request it makes goes to MarvelCDB and
   nowhere else, only to read your decks and the public card list. It contacts no other
   websites and no third parties.
@@ -143,4 +155,5 @@ thing on your account.
 The downloader is deliberately easy on the site. It fetches one deck at a time with a
 short pause between each, slows down if the server ever asks it to, and only makes the
 same kind of requests MarvelCDB's own pages already do. A few hundred decks take about 3
-to 5 minutes, and there's nothing here that would strain the site.
+to 5 minutes for that first full backup. After that, top-ups only fetch the decks you
+actually changed, so they usually finish in seconds and ask almost nothing of the site.

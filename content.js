@@ -1,7 +1,7 @@
 // content.js — orchestrator. Wires the modules (extract → transform → zip, with
 // ui for progress) into one backup run. All the logic lives in src/*.js; this file
 // is just glue: it owns no format code and no network code of its own. The one bit
-// of state it does own is the cross-run backup cache in localStorage — see below.
+// of state it does own is the cross-run deck cache — see below.
 (function () {
   if (window.__mcbInjected) return;
   window.__mcbInjected = true;
@@ -9,36 +9,67 @@
   const { zip, transform, extract, ui } = window.MCB;
   const enc = zip.enc;
 
-  // Cross-run memory for incremental backups. localStorage is per-origin
-  // (marvelcdb.com), needs no extra permission from a content script, and never
-  // leaves the browser. We treat it as a CACHE, never a source of truth: if it is
-  // missing or unreadable, the run simply falls back to a full backup and rebuilds
-  // it. A lost cache can never corrupt the ZIP the user already has on disk.
-  //   mcb:lastUser        → the user_id of the most recent backup on this browser
-  //   mcb:backup:{userId} → { lastBackupAt, decks: { [id]: manifestEntry } }
-  const CACHE_PREFIX = 'mcb:backup:';
-  const LAST_USER_KEY = 'mcb:lastUser';
-  function readCache(userId) {
+  // Cross-run cache. The cache is the *incremental* part: it stores each deck's raw
+  // object (the .json source of truth, history and all) so a run only has to
+  // re-download the decks that changed. The ZIP itself is ALWAYS a full, self-
+  // contained backup — every deck's five files are regenerated every run, from a
+  // freshly fetched raw deck if it changed or the cached one if it didn't. So the
+  // user never has to unzip a top-up "over" an old folder.
+  //
+  // We use IndexedDB, not localStorage: raw decks can be several MB across a big
+  // collection, well past localStorage's ~5MB (which we'd also be sharing with
+  // MarvelCDB's own data). The cache is a cache, never a source of truth: if it is
+  // missing or unreadable, the run just does a full backup and rebuilds it, and a
+  // lost cache can never corrupt the ZIP the user already has. Keyed by MarvelCDB
+  // user id so a shared computer login can't cross-contaminate accounts.
+  //   key backup:{userId} → { lastBackupAt, decks: { [id]: rawDeck } }
+  const CACHE_PREFIX = 'backup:';
+  const kv = window.MCB.kv || makeIdbKv();
+  function makeIdbKv() {
+    const DB = 'mcb',
+      STORE = 'backups';
+    const open = () =>
+      new Promise((res, rej) => {
+        const r = indexedDB.open(DB, 1);
+        r.onupgradeneeded = () => {
+          if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE);
+        };
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+    const run = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const t = db.transaction(STORE, mode);
+        const rq = fn(t.objectStore(STORE));
+        t.oncomplete = () => res(rq && rq.result);
+        t.onerror = () => rej(t.error);
+        t.onabort = () => rej(t.error);
+      });
+    };
+    return {
+      get: (k) => run('readonly', (os) => os.get(k)).then((v) => (v == null ? null : v)).catch(() => null),
+      set: (k, v) => run('readwrite', (os) => os.put(v, k)).then(() => true).catch(() => false),
+      del: (k) => run('readwrite', (os) => os.delete(k)).then(() => true).catch(() => false),
+    };
+  }
+  async function readCache(userId) {
+    const obj = await kv.get(CACHE_PREFIX + userId);
+    return obj && obj.decks ? obj : null;
+  }
+  const writeCache = (userId, obj) => kv.set(CACHE_PREFIX + userId, obj);
+
+  // The logged-in MarvelCDB user id, read from the site's OWN cache. app.user.js
+  // stores the current user (id, name, …) under localStorage['user']; we share the
+  // origin, so this is free and instant. We only ever READ it. Null when unknown
+  // (logged out, or the site hasn't cached it yet) — the run then falls back to the
+  // user id on the first fetched deck.
+  function getSiteUserId() {
     try {
-      const raw = localStorage.getItem(CACHE_PREFIX + userId);
+      const raw = localStorage.getItem('user');
       if (!raw) return null;
-      const obj = JSON.parse(raw);
-      return obj && obj.decks ? obj : null;
-    } catch (e) {
-      return null;
-    }
-  }
-  function writeCache(userId, obj) {
-    try {
-      localStorage.setItem(CACHE_PREFIX + userId, JSON.stringify(obj));
-      localStorage.setItem(LAST_USER_KEY, String(userId));
-    } catch (e) {
-      // Private mode / quota / disabled storage: skip. Next run self-heals.
-    }
-  }
-  function readLastUser() {
-    try {
-      return localStorage.getItem(LAST_USER_KEY);
+      const u = JSON.parse(raw);
+      return u && u.id != null ? u.id : null;
     } catch (e) {
       return null;
     }
@@ -46,10 +77,34 @@
 
   let running = false;
 
-  const launcher = ui.makeLauncher(run);
+  const launcher = ui.makeLauncher(run, clearCache);
+  // Reveal the "Clear cached decks" control if this account already has a cache.
+  (async () => {
+    try {
+      const su = getSiteUserId();
+      if (su != null && (await readCache(su))) launcher.showClear();
+    } catch (e) {}
+  })();
+
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg === 'mcb-start-backup') run();
   });
+
+  async function clearCache() {
+    const su = getSiteUserId();
+    const yes = await ui.confirmModal({
+      title: 'Clear cached decks?',
+      text:
+        'Your decks are cached locally. Only new and changed decks will be downloaded, ' +
+        'which saves time and reduces load on the MarvelCDB website. Clearing the cache is ' +
+        'only recommended if you are experiencing issues. Do you want to clear the cache?',
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Clear',
+    });
+    if (!yes) return;
+    if (su != null) await kv.del(CACHE_PREFIX + su);
+    launcher.hideClear();
+  }
 
   function triggerDownload(blob) {
     const a = document.createElement('a');
@@ -70,23 +125,12 @@
     const session = extract.createSession({ onLog: (m, e) => panel && panel.log(m, e) });
     session.onPausedChange((p) => panel && panel.setPaused(p));
 
-    // The cutoff we store is the moment this run STARTED (before enumeration), not
-    // "now" at the end. Any deck edited mid-run then has date_update > cutoff, so the
-    // next incremental re-fetches it instead of trusting a stale copy.
     const runStart = new Date().toISOString();
 
-    // Decide full vs incremental up front from the most recent backup on this
-    // browser. The user is almost always the same account here; if the first deck we
-    // fetch says otherwise, we reconcile below before trusting the cutoff.
-    const lastUser = readLastUser();
-    let cache = lastUser ? readCache(lastUser) : null;
-    let mode = 'full';
-    let cutoff = null;
-    if (cache && cache.lastBackupAt) {
-      const choice = await ui.chooseMode({ lastBackupAt: cache.lastBackupAt });
-      mode = choice.mode;
-      if (mode === 'incremental') cutoff = cache.lastBackupAt;
-    }
+    // Identify the account up front so we load the right cache before downloading.
+    const siteUser = getSiteUserId();
+    let cache = siteUser != null ? await readCache(siteUser) : null;
+    const incremental = !!(cache && cache.decks && Object.keys(cache.decks).length);
 
     const handlers = {
       onPauseToggle: () => session.setPaused(!session.isPaused()),
@@ -98,60 +142,116 @@
       },
     };
     panel = ui.makePanel(handlers);
+    if (incremental) {
+      panel.setLabels(
+        Object.keys(cache.decks).length + ' decks cached · checking for updates',
+        'Downloading new and updated decks',
+      );
+    }
 
-    // Run state lives out here so a cancel can still package what was collected.
-    const files = []; // ZIP file entries for decks fetched THIS run
-    const fresh = {}; // id → manifest entry, fetched this run
+    // Run state lives out here so a cancel can still package what was collected and
+    // commit progress to the cache.
+    const freshRaw = {}; // id → raw deck fetched THIS run
     let enumIds = new Set(); // every deck id the account currently has
+    let ctx = null; // card/pack context for the transforms (set after bulk fetch)
+    let actualUserId = null; // user id from the first fetched deck (authoritative)
     let ok = 0,
       fail = 0;
 
-    // The COMPLETE manifest for the index/ZIP: every enumerated deck, preferring a
-    // freshly-fetched entry, falling back to the cached one (whose files are already
-    // on the user's disk from a prior backup). Cached decks no longer enumerated are
-    // dropped, so deletions on the site are reflected.
-    const buildMerged = () => {
+    // The raw deck to use for a given id: freshly fetched if we got it this run, else
+    // the cached copy (whose data is complete and unchanged). This is what makes the
+    // ZIP a full backup regardless of how few decks we actually downloaded.
+    const rawFor = (id) => freshRaw[id] || (cache && cache.decks && cache.decks[id]) || null;
+    const allRaw = () => {
       const m = {};
-      const cached = (cache && cache.decks) || {};
       for (const id of enumIds) {
-        if (fresh[id]) m[id] = fresh[id];
-        else if (cached[id]) m[id] = cached[id];
+        const d = rawFor(id);
+        if (d) m[id] = d; // a new deck that failed to fetch has no raw source; skip it
       }
       return m;
     };
-    const entriesArray = () => Object.values(buildMerged()).sort((a, b) => a.id - b.id);
+
+    // Persist progress to the cache. Safe to call on a clean finish OR on cancel/
+    // error: because each deck carries its own stamp, any deck we didn't refresh this
+    // run keeps its old stamp and is re-detected next run — so a cancelled backup
+    // resumes instead of starting over. Guarded so an interrupted enumeration (empty
+    // set, nothing to merge) can never clobber a good cache.
+    const commitCache = async () => {
+      const keyUser = actualUserId != null ? actualUserId : siteUser;
+      const raw = allRaw();
+      if (keyUser == null || !Object.keys(raw).length) return true;
+      const saved = await writeCache(keyUser, { lastBackupAt: runStart, decks: raw });
+      if (saved) launcher.showClear();
+      return saved;
+    };
+
+    // Regenerate every deck's five files + manifest entry from its raw object. Runs
+    // fresh at package time so the ZIP always reflects the full current set.
+    const buildOutputs = () => {
+      const files = [];
+      const manifest = [];
+      if (!ctx) return { files, manifest };
+      for (const id of [...enumIds].sort((a, b) => a - b)) {
+        const deck = rawFor(id);
+        if (!deck) continue;
+        const base = 'decks/' + id + '-' + transform.slugify(deck.name);
+        files.push({ name: base + '.json', data: enc(JSON.stringify(deck, null, 2)) });
+        files.push({ name: base + '.md', data: enc(transform.buildMarkdown(deck)) });
+        files.push({ name: base + '.txt', data: enc(transform.buildText(deck, ctx)) });
+        files.push({ name: base + '.o8d', data: enc(transform.buildOctgn(deck, ctx)) });
+        files.push({ name: base + '.html', data: enc(transform.buildDeckHtml(deck, ctx)) });
+        manifest.push(transform.buildManifestEntry(deck, base));
+      }
+      return { files, manifest };
+    };
     const packageZip = () => {
-      const f = files.slice();
-      f.push({
+      const { files, manifest } = buildOutputs();
+      files.push({
         name: 'index.html',
-        data: enc(
-          transform.buildIndexHtml(entriesArray(), {
-            incremental: mode === 'incremental',
-            backedUpAt: runStart,
-          }),
-        ),
+        data: enc(transform.buildIndexHtml(manifest, { backedUpAt: runStart })),
       });
-      f.push({ name: 'manifest.json', data: enc(JSON.stringify(entriesArray(), null, 2)) });
-      return zip.makeZip(f);
+      files.push({ name: 'manifest.json', data: enc(JSON.stringify(manifest, null, 2)) });
+      return zip.makeZip(files);
     };
     const rebuild = () => triggerDownload(packageZip());
 
     try {
-      // 1. enumerate deck IDs — keep list order (dateUpdate DESC). The incremental
-      //    early-stop below relies on it, so do NOT re-sort numerically here.
+      // 1. enumerate decks + their last-updated stamps (both come from the cheap
+      //    list HTML). We page the whole list so deletions and the full backup are
+      //    covered, not just the changed decks.
       panel.discover({ page: 0, totalPages: 0, found: 0 });
-      const { ids, pagesWithDecks } = await extract.enumerateDeckIds(session, (p) =>
+      const { decks, pagesWithDecks } = await extract.enumerateDecks(session, (p) =>
         panel.discover(p),
       );
-      const enumOrder = ids.slice();
-      enumIds = new Set(enumOrder);
-      if (!enumOrder.length) {
+      enumIds = new Set(decks.map((d) => d.id));
+      if (!decks.length) {
         panel.finalize('empty');
         return;
       }
-      panel.discoverDone(enumOrder.length, pagesWithDecks);
+      panel.discoverDone(decks.length, pagesWithDecks);
 
-      // 1b. bulk reference data (once): card DB + pack list power every transform.
+      // 1b. Diff against the cache to decide what to download. Fetch a deck when it is
+      //     new, its stamp differs from the cached one, or its stamp is unknown (be
+      //     safe). Compared as timestamps, so format quirks don't matter.
+      const cachedDecks = (cache && cache.decks) || {};
+      const toFetch = decks
+        .filter((d) => {
+          const c = cachedDecks[d.id];
+          if (!c) return true;
+          if (!d.dateUpdate || !c.date_update) return true;
+          return Date.parse(d.dateUpdate) !== Date.parse(c.date_update);
+        })
+        .map((d) => d.id);
+      if (incremental) {
+        panel.log(
+          toFetch.length +
+            ' new or updated · ' +
+            (decks.length - toFetch.length) +
+            ' unchanged (reused from cache)',
+        );
+      }
+
+      // 1c. bulk reference data (once): card DB + pack list power every transform.
       let cardMap = null,
         packMap = null,
         specialsBySet = null;
@@ -178,109 +278,66 @@
         );
       }
       await session.pace();
-      const ctx = { cardMap, packMap, specialsBySet };
+      ctx = { cardMap, packMap, specialsBySet };
 
-      // Fetch → transform one deck into all five formats + its manifest entry.
-      const writeDeck = (deck) => {
-        const base = 'decks/' + deck.id + '-' + transform.slugify(deck.name);
-        files.push({ name: base + '.json', data: enc(JSON.stringify(deck, null, 2)) });
-        files.push({ name: base + '.md', data: enc(transform.buildMarkdown(deck)) });
-        files.push({ name: base + '.txt', data: enc(transform.buildText(deck, ctx)) });
-        files.push({ name: base + '.o8d', data: enc(transform.buildOctgn(deck, ctx)) });
-        files.push({ name: base + '.html', data: enc(transform.buildDeckHtml(deck, ctx)) });
-        fresh[deck.id] = transform.buildManifestEntry(deck, base);
-      };
-
-      // 2. per-deck: fetch raw, then transform. In incremental mode, decks come
-      //    newest-first, so we stop at the first one older than the cutoff.
-      let actualUserId = null;
-      const attempted = new Set(); // ids the main loop actually tried to fetch
-      panel.beginDownload(enumOrder.length);
-      for (let i = 0; i < enumOrder.length; i++) {
-        const id = enumOrder[i];
+      // 2. download only the new/updated decks (the unchanged ones come from cache).
+      panel.beginDownload(toFetch.length);
+      if (!toFetch.length) panel.log('Everything is already up to date.');
+      for (let i = 0; i < toFetch.length; i++) {
+        const id = toFetch[i];
         let name = 'deck ' + id;
-        attempted.add(id);
         try {
           const deck = await extract.fetchDeckRaw(session, id);
           name = deck.name || name;
 
-          // First real deck tells us the true account. If it isn't the one whose
-          // cache we loaded, switch to the right cache (and drop the cutoff if that
-          // account has no prior backup) before trusting anything.
+          // The first real deck confirms the account. If the site's cached user id
+          // was stale (someone switched accounts), reload the RIGHT account's cache
+          // so we never mix two people's decks.
           if (actualUserId == null) {
             actualUserId = deck.user_id;
-            if (String(actualUserId) !== String(lastUser)) {
-              cache = readCache(actualUserId);
-              if (mode === 'incremental') {
-                if (cache && cache.lastBackupAt) cutoff = cache.lastBackupAt;
-                else {
-                  mode = 'full';
-                  cutoff = null;
-                }
-              }
-            }
+            if (String(actualUserId) !== String(siteUser)) cache = await readCache(actualUserId);
           }
 
-          if (mode === 'incremental' && cutoff) {
-            const dMs = Date.parse(deck.date_update);
-            const cMs = Date.parse(cutoff);
-            // Older than the last backup → so is everything after it. Stop. (This
-            // boundary deck is unchanged, so we don't write it; its files are on disk.)
-            if (!Number.isNaN(dMs) && !Number.isNaN(cMs) && dMs < cMs) break;
-          }
-
-          writeDeck(deck);
+          freshRaw[id] = deck;
           ok++;
         } catch (e) {
           if (e === extract.CANCELLED) throw e;
           fail++;
           panel.log('✕ deck ' + id + ' failed: ' + e.message, true);
         }
-        panel.download({ index: i + 1, total: enumOrder.length, name, fail });
+        panel.download({ index: i + 1, total: toFetch.length, name, fail });
         await session.pace();
       }
 
-      // 2b. Self-heal: an enumerated deck the early-stop skipped that also isn't in
-      //     the cache (a partial/cleared cache) gets fetched now so the index stays
-      //     complete. Decks the loop already tried are excluded, so a genuine fetch
-      //     failure is reported once, not retried here.
-      const cachedDecks = (cache && cache.decks) || {};
-      const gaps = [...enumIds].filter((id) => !attempted.has(id) && !cachedDecks[id]);
-      if (gaps.length) {
-        panel.log(
-          'Fetching ' + gaps.length + ' deck' + (gaps.length === 1 ? '' : 's') + ' the cache was missing…',
-        );
-        for (const id of gaps) {
-          try {
-            writeDeck(await extract.fetchDeckRaw(session, id));
-            ok++;
-          } catch (e) {
-            if (e === extract.CANCELLED) throw e;
-            fail++;
-            panel.log('✕ deck ' + id + ' failed: ' + e.message, true);
-          }
-          await session.pace();
-        }
-      }
-
-      // 3. zip + download (adds a COMPLETE index.html + manifest.json every run).
+      // 3. zip + download — a COMPLETE backup of every deck, every run.
       triggerDownload(packageZip());
 
-      // 4. Commit the cache — only on a clean finish. Advance the cutoff only if
-      //    nothing failed, so a changed-but-failed deck is retried next time rather
-      //    than silently skipped.
-      if (actualUserId != null) {
-        const lastBackupAt = fail === 0 ? runStart : (cache && cache.lastBackupAt) || null;
-        writeCache(actualUserId, { lastBackupAt, decks: buildMerged() });
+      // 4. Commit progress to the cache.
+      const saved = await commitCache();
+      if (!saved) {
+        panel.log('Could not save the deck cache — the next run will re-download everything.', true);
       }
 
-      const total = Object.keys(buildMerged()).length;
-      panel.finalize('done', { ok, fail, rebuild, mode, changed: ok, reused: total - ok });
+      const total = Object.keys(allRaw()).length;
+      panel.finalize('done', {
+        ok,
+        fail,
+        rebuild,
+        mode: incremental ? 'incremental' : 'full',
+        changed: ok,
+        reused: total - ok,
+        total,
+      });
     } catch (e) {
+      // Commit whatever we fetched before the interruption so the next run resumes
+      // from here instead of starting over (the per-deck stamp diff re-detects the
+      // rest). The guard in commitCache protects a good cache if enumeration itself
+      // was interrupted.
+      await commitCache();
       if (e === extract.CANCELLED) {
-        // Package what we have (index still lists cached decks too), but write no
-        // cache — a cancelled run must not advance the cutoff.
-        const collected = Object.keys(buildMerged()).length;
+        // Package what we have — thanks to the cache this is still a full backup of
+        // every deck.
+        const collected = Object.keys(allRaw()).length;
         panel.finalize('cancelled', collected > 0 ? { collected, rebuild } : {});
       } else {
         panel.log('Error: ' + e.message, true);

@@ -1,19 +1,50 @@
 # Feature request: incremental backups
 
-**Status:** implemented in v1.3.0 (approach 1 below). A run now remembers the last
-backup time in `localStorage` (keyed by `user_id`) and offers an incremental top-up vs
-a full backup. The cache is treated as a *cache, never a source of truth*: if it is
-missing or from another account the run falls back to a full backup and rebuilds it, and
-every run still regenerates a complete `index.html` + `manifest.json` (unchanged decks
-carried from the cache) so a top-up ZIP unzipped over the old folder keeps a full index.
-Deletions are reflected because the merge drops cached decks no longer enumerated. See
-`content.js` (cache + merge/early-stop) and `src/transform.js` (`buildManifestEntry`,
+**Status:** implemented in v1.3.0. How it actually shipped (which differs from the
+proposal below in two good ways):
+
+- **The list page DOES expose each deck's timestamp.** The proposal's central caveat
+  ("the deck-list row HTML does not render each deck's `dateUpdate`") is **wrong against
+  the current source**: every deck block on `/decks` includes
+  `<time datetime="{{ dateUpdate|date('c') }}">`. We already download that HTML during
+  enumeration, so reading it is free. `enumerateDecks` (in `src/extract.js`) now returns
+  `{ id, dateUpdate }` per deck.
+- **So there's no timestamp modal and no order-based early-stop.** A run enumerates the
+  whole list (cheap), diffs each deck's list stamp against the cached per-deck stamp, and
+  downloads only the new/updated ones. Comparison is timestamp-vs-timestamp, so there is
+  no client-clock cutoff to get wrong. First run = full; later runs top up automatically.
+- **User identity comes from the site itself.** MarvelCDB's `app.user.js` caches the
+  logged-in user under `localStorage['user']`; we read it (same origin, free) to key the
+  cache by `user_id` up front, so a shared computer login never mixes accounts. The first
+  fetched deck's `user_id` is the authoritative fallback.
+- **The cache is the incremental part; the ZIP is always a full copy.** The cache stores
+  each deck's **raw object** (the `.json` source of truth, history and all), so a run only
+  re-downloads changed decks. But every run regenerates all five files for *every* deck —
+  from a freshly fetched raw deck if it changed, or the cached one if it didn't — so the
+  ZIP is always a complete, self-contained backup. There is no unzip-"over"-an-old-folder
+  step. The cache drops decks no longer enumerated, so deletions are reflected.
+- **Stored in IndexedDB, not localStorage.** Raw decks can be several MB across a big
+  collection, past localStorage's ~5MB (which we'd also share with MarvelCDB's own data).
+  Keyed `backup:{userId}` → `{ lastBackupAt, decks: { [id]: rawDeck } }`. Cache, never a
+  source of truth: missing/unreadable/another-account → the run just does a full backup and
+  rebuilds it.
+- **Cancel/error resumes, it doesn't restart.** Because each deck carries its own stamp,
+  the cache is committed even on a cancelled or errored run (guarded so an *interrupted
+  enumeration* — empty set — can't clobber a good cache). Any deck not refreshed keeps its
+  old stamp and is re-detected next run, so an interrupted backup picks up where it left
+  off instead of re-downloading everything. The in-run Pause/Resume button is separate
+  (in-memory flow control within one run).
+- **"Clear cached decks"** (a button by the launcher, shown once a cache exists) is the
+  deliberate, discouraged way to force a full re-download.
+
+See `content.js` (identity + diff + regenerate + clear + the IndexedDB wrapper),
+`src/extract.js` (`enumerateDecks`), and `src/transform.js` (`buildManifestEntry`,
 `buildIndexHtml`). The "detect the previous backup folder via the File System Access API
 and update it in place" idea below stays a possible later upgrade.
 
-The original proposal follows. Today every run does a full backup of all decks. This
-describes fetching **only decks added or updated since a timestamp**, so a user who has
-already done the big backup can top up cheaply without pummeling marvelcdb.com.
+The original proposal follows (kept for history; note the timestamp caveat above is now
+obsolete). Today every run does a full backup of all decks. This describes fetching
+**only decks added or updated since a timestamp**.
 
 ## Goal
 

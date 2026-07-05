@@ -113,12 +113,15 @@
     };
   }
 
-  // Enumerate the user's personal deck IDs by paging through /decks/{page}.
-  // Returns { ids (list order = dateUpdate DESC), pagesWithDecks, totalPages }.
+  // Enumerate the user's personal decks by paging through /decks/{page}.
+  // Returns { decks: [{ id, dateUpdate }] (list order = dateUpdate DESC),
+  // pagesWithDecks, totalPages }. Each deck sits in its own `class="box"` with one
+  // /deck/view|edit/{id} link and one <time datetime="..."> (the last-updated
+  // stamp), so we split per block to pair each id with its own date. `dateUpdate`
+  // is null when we can't read it — callers treat that as "changed" and fetch it.
   // onProgress({ page, totalPages, found }) is called after each page.
-  async function enumerateDeckIds(session, onProgress) {
-    const seen = new Set();
-    const ordered = [];
+  async function enumerateDecks(session, onProgress) {
+    const byId = new Map(); // id → dateUpdate|null, insertion order = list order
     let totalPages = 1,
       pagesWithDecks = 0;
     for (let page = 1; page <= 300; page++) {
@@ -127,21 +130,29 @@
         const n = +mm[1];
         if (n > totalPages) totalPages = n;
       }
-      const before = seen.size;
+      const before = byId.size;
+      for (const block of html.split(/class="box"/).slice(1)) {
+        const idm = block.match(/\/deck\/(?:view|edit)\/(\d+)/);
+        if (!idm) continue;
+        const n = +idm[1];
+        if (byId.has(n)) continue;
+        const tm = block.match(/<time\b[^>]*\bdatetime="([^"]+)"/i);
+        byId.set(n, tm ? tm[1] : null);
+      }
+      // Safety net: if the block split ever misses a deck (markup drift), still
+      // capture its id with an unknown date so it is fetched rather than lost.
       for (const m of html.matchAll(/\/deck\/(?:view|edit)\/(\d+)/g)) {
         const n = +m[1];
-        if (!seen.has(n)) {
-          seen.add(n);
-          ordered.push(n);
-        }
+        if (!byId.has(n)) byId.set(n, null);
       }
-      if (seen.size === before) break; // a page with no new decks = past the end
+      if (byId.size === before) break; // a page with no new decks = past the end
       pagesWithDecks = page;
       if (page > totalPages) totalPages = page;
-      if (onProgress) onProgress({ page, totalPages, found: seen.size });
+      if (onProgress) onProgress({ page, totalPages, found: byId.size });
       await session.pace();
     }
-    return { ids: ordered, pagesWithDecks, totalPages };
+    const decks = [...byId.entries()].map(([id, dateUpdate]) => ({ id, dateUpdate }));
+    return { decks, pagesWithDecks, totalPages };
   }
 
   // Bulk card database → Map(code → raw card). One request, reused for all decks.
@@ -178,7 +189,7 @@
   MCB.extract = {
     CANCELLED,
     createSession,
-    enumerateDeckIds,
+    enumerateDecks,
     fetchCardMap,
     fetchPackMap,
     fetchDeckRaw,

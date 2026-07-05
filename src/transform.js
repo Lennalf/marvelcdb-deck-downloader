@@ -373,9 +373,9 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
   }
 
   // ── index.html (browsable table) ─────────────────────────────────────────────
-  // opts.incremental adds an "unzip over your old folder" banner; opts.backedUpAt
-  // is the ISO run timestamp for the header line. Rows carry data-* attributes so
-  // a later search-as-you-type layer is a pure add-on (see feature-index-page.md).
+  // opts.backedUpAt is the ISO run timestamp for the header line. Rows carry data-*
+  // attributes so a later search-as-you-type layer is a pure add-on (see
+  // feature-index-page.md). Every backup is complete, so there is no partial-ZIP case.
   const INDEX_FORMATS = [
     ['json', 'JSON'],
     ['md', 'MD'],
@@ -432,10 +432,6 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
       })
       .join('');
     const when = String(opts.backedUpAt || new Date().toISOString()).slice(0, 10);
-    const banner = opts.incremental
-      ? '<div class="note">This is an incremental top-up, so it only holds the decks that changed. ' +
-        'Unzip it over your previous backup folder so every link below keeps working.</div>'
-      : '';
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MarvelCDB Deck Downloader (${entries.length} decks)</title>
@@ -443,7 +439,6 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
 body{margin:0;font:15px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;background:#fff}
 .wrap{max-width:1040px;margin:0 auto;padding:24px}
 h1{font-size:24px;margin:0 0 4px}.sub{color:#777;font-size:13px;margin-bottom:18px}
-.note{background:#fff6e5;border:1px solid #f0dcae;color:#7a5b12;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:16px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #eee;vertical-align:top}
 th{color:#777;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
@@ -457,7 +452,7 @@ tr:hover td{background:#f7f9fc}
 <body><div class="wrap">
 <h1>MarvelCDB Deck Downloader</h1>
 <div class="sub">${entries.length} deck${entries.length === 1 ? '' : 's'} · backed up ${when}</div>
-${banner}<table><thead><tr><th>Deck</th><th>Hero</th><th>Aspect</th><th>Tags</th><th>Updated</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>Deck</th><th>Hero</th><th>Aspect</th><th>Tags</th><th>Updated</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table>
 </div></body></html>`;
   }
 

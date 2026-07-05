@@ -23,6 +23,11 @@
 #mcb-btn:hover{background:#2861d8;transform:translateY(-1px)}
 #mcb-btn:active{transform:translateY(0)}
 #mcb-btn svg{flex:0 0 auto}
+#mcb-clear{position:fixed;right:20px;bottom:74px;z-index:2147483646;
+  font:600 12px system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#c9d2e0;background:#1a2130;
+  border:1px solid #2b3648;border-radius:9px;padding:7px 12px;cursor:pointer;
+  box-shadow:0 4px 14px rgba(0,0,0,.30)}
+#mcb-clear:hover{background:#212a3b;color:#fff}
 #mcb-panel{position:fixed;right:20px;bottom:20px;z-index:2147483647;width:364px;max-width:calc(100vw - 40px);
   background:#111621;color:#e6e9ef;border:1px solid #283143;border-radius:14px;
   box-shadow:0 16px 48px rgba(0,0,0,.55);overflow:hidden;
@@ -75,56 +80,81 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
 .mcb-modal-title{font-weight:650;font-size:15px;margin-bottom:8px}
 .mcb-modal-text{color:#aeb6c4;font-size:12.5px;margin-bottom:16px}
 .mcb-modal-btns{display:flex;flex-direction:column;gap:8px}
-.mcb-modal-btns .mcb-btn2{flex:none}`;
+.mcb-modal-btns.mcb-modal-row{flex-direction:row}
+.mcb-modal-btns .mcb-btn2{flex:1}`;
     (document.head || document.documentElement).appendChild(s);
   }
 
-  // Create + mount the floating launcher button. onRun fires on click.
-  function makeLauncher(onRun) {
+  // Create + mount the floating launcher. onRun fires on the main click; onClear
+  // fires on the (initially hidden) "Clear cached decks" button, which the caller
+  // reveals with showClear() once a cache exists for the current user.
+  function makeLauncher(onRun, onClear) {
     injectStyles();
     const btn = document.createElement('button');
     btn.id = 'mcb-btn';
     btn.type = 'button';
     btn.innerHTML = ICON + '<span>Download my decks</span>';
     btn.addEventListener('click', () => onRun());
+
+    const clearBtn = document.createElement('button');
+    clearBtn.id = 'mcb-clear';
+    clearBtn.type = 'button';
+    clearBtn.textContent = 'Clear cached decks';
+    clearBtn.style.display = 'none';
+    clearBtn.addEventListener('click', () => onClear && onClear());
+
+    let clearWanted = false;
     const mount = () => {
-      if (document.body && !document.getElementById('mcb-btn')) document.body.appendChild(btn);
+      if (!document.body) return;
+      if (!document.getElementById('mcb-btn')) document.body.appendChild(btn);
+      if (!document.getElementById('mcb-clear')) document.body.appendChild(clearBtn);
     };
     if (document.body) mount();
     else document.addEventListener('DOMContentLoaded', mount);
     return {
       el: btn,
-      hide: () => (btn.style.display = 'none'),
-      show: () => (btn.style.display = ''),
+      hide: () => {
+        btn.style.display = 'none';
+        clearBtn.style.display = 'none';
+      },
+      show: () => {
+        btn.style.display = '';
+        clearBtn.style.display = clearWanted ? '' : 'none';
+      },
+      showClear: () => {
+        clearWanted = true;
+        if (btn.style.display !== 'none') clearBtn.style.display = '';
+      },
+      hideClear: () => {
+        clearWanted = false;
+        clearBtn.style.display = 'none';
+      },
     };
   }
 
-  // Ask whether to do an incremental top-up or a full backup. Only shown when a
-  // prior backup exists on this browser. Resolves { mode: 'incremental' | 'full' }.
-  function chooseMode({ lastBackupAt }) {
+  // A yes/no confirmation dialog. Resolves true (confirm) or false (cancel). The
+  // title/text are our own trusted strings.
+  function confirmModal({ title, text, cancelLabel, confirmLabel }) {
     injectStyles();
-    const when = String(lastBackupAt || '').slice(0, 10);
     return new Promise((resolve) => {
       const ov = document.createElement('div');
       ov.id = 'mcb-modal';
       ov.innerHTML = `
 <div class="mcb-modal-card">
-  <div class="mcb-modal-title">How much do you want to back up?</div>
-  <div class="mcb-modal-text">You last backed up on ${when}. An incremental top-up only fetches the decks
-  you added or changed since then, so it is quick and easy on marvelcdb. Unzip it over your previous
-  backup folder and every deck keeps working.</div>
-  <div class="mcb-modal-btns">
-    <button class="mcb-btn2 mcb-primary" data-inc>Incremental (since ${when})</button>
-    <button class="mcb-btn2" data-full>Full backup of everything</button>
+  <div class="mcb-modal-title">${title}</div>
+  <div class="mcb-modal-text">${text}</div>
+  <div class="mcb-modal-btns mcb-modal-row">
+    <button class="mcb-btn2" data-cancel>${cancelLabel || 'Cancel'}</button>
+    <button class="mcb-btn2 mcb-primary" data-ok>${confirmLabel || 'OK'}</button>
   </div>
 </div>`;
       document.body.appendChild(ov);
-      const done = (mode) => {
+      const done = (v) => {
         ov.remove();
-        resolve({ mode });
+        resolve(v);
       };
-      ov.querySelector('[data-inc]').addEventListener('click', () => done('incremental'));
-      ov.querySelector('[data-full]').addEventListener('click', () => done('full'));
+      ov.querySelector('[data-cancel]').addEventListener('click', () => done(false));
+      ov.querySelector('[data-ok]').addEventListener('click', () => done(true));
     });
   }
 
@@ -210,6 +240,11 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
 
     return {
       remove,
+      // Rename the two phase headings (used for the incremental "checking" flow).
+      setLabels(discoverText, downloadText) {
+        if (discoverText) el.dPhase.querySelector('.mcb-plabel').textContent = discoverText;
+        if (downloadText) el.wPhase.querySelector('.mcb-plabel').textContent = downloadText;
+      },
       discover({ page, totalPages, found }) {
         el.status.textContent = 'Discovering…';
         setTrack(el.d, totalPages > 1 ? page / totalPages : null);
@@ -293,12 +328,15 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
           el.w.detail.classList.remove('mcb-warn');
           if (data.mode === 'incremental') {
             el.w.detail.textContent =
-              (data.changed
-                ? 'Backed up ' + data.changed + ' changed deck' + (data.changed === 1 ? '' : 's')
-                : 'No decks changed') +
-              (data.reused ? ' · ' + data.reused + ' unchanged' : '') +
+              'Backed up ' +
+              data.total +
+              ' deck' +
+              (data.total === 1 ? '' : 's') +
+              ' · ' +
+              (data.changed ? data.changed + ' new or updated' : 'nothing changed') +
+              (data.reused ? ', ' + data.reused + ' reused' : '') +
               (data.fail ? ' · ' + data.fail + ' failed' : '') +
-              ' · unzip over your old folder';
+              ' · ZIP downloaded';
           } else {
             el.w.detail.textContent =
               'Saved ' +
@@ -337,5 +375,5 @@ details.mcb-logwrap[open] summary:before{content:'▾ '}
     };
   }
 
-  MCB.ui = { ICON, injectStyles, makeLauncher, makePanel, chooseMode };
+  MCB.ui = { ICON, injectStyles, makeLauncher, makePanel, confirmModal };
 })();

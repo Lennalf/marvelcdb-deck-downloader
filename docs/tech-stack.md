@@ -21,6 +21,10 @@ JSON in the backup still has the complete information to regenerate it.
 
 `src/zip.js` (pure ZIP writer) and `src/ui.js` (progress panel/button) are the
 other two modules; `content.js` is the thin orchestrator that wires them together.
+It also owns the cross-run deck cache (raw decks in IndexedDB, keyed by MarvelCDB
+user id) that powers incremental backups — see the incremental-backup doc. Because
+the ZIP is regenerated in full from raw decks every run (cached or freshly fetched),
+every backup is complete regardless of how few decks were actually downloaded.
 
 ## Network calls
 
@@ -35,13 +39,28 @@ that page, so it never needs to be injected on `/deck/view/{id}` or the API path
 
 | #   | Request                                     | Freq                            | Auth                                                   | Purpose                                                                                                                                                                                                                                                         |
 | --- | ------------------------------------------- | ------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `GET /decks/{page}` (HTML)                  | per list page (~1 per 12 decks) | **session**                                            | Enumerate the user's personal deck IDs. The only listing that includes _unpublished_ decks. Paginated 12/page; we read deck IDs and the max page number from the pagination links. Default order is **`dateUpdate DESC`** (see incremental-backup doc).         |
+| 1   | `GET /decks/{page}` (HTML)                  | per list page (~1 per 12 decks) | **session**                                            | Enumerate the user's personal decks. The only listing that includes _unpublished_ decks. Paginated 12/page; per deck block we read its id, and its last-updated stamp from `<time datetime>` (`enumerateDecks`). Incremental backups diff that stamp against the cache to skip unchanged decks, so most decks are never fetched at all. Default order is **`dateUpdate DESC`**.         |
 | 2   | `GET /deck/view/{id}` (HTML)                | **per deck**                    | public if "Share your decks" is on, else owner session | The raw deck. The page embeds the full deck object inline as `app.deck.init({…})` (includes `description_md`) and the revision history as `app.deck_history.init([…])`. There is **no JSON API** for personal decks, so this HTML is the source.                |
 | 3   | `GET /api/public/cards/?encounter=1` (JSON) | **once per run**                | none (public)                                          | Bulk card database. Resolves card codes → `name`, `subname`, `type_code`, `pack_code`/`pack_name`, `quantity`, `octgn_id`, `permanent`, card-set info. One bulk call powers every deck's Text/OCTGN/HTML transforms — **never per-card, never per-deck-cards**. |
 | 4   | `GET /api/public/packs/` (JSON)             | **once per run**                | none (public)                                          | Pack list with `position`. Needed to order the Text export's "Packs: From X to Y" line and to group cards by pack (`getIncludedPacks`).                                                                                                                         |
 
 So a full backup of _N_ decks is roughly `ceil(N/12) + N + 2` requests: the two
-bulk reference calls are amortized across the whole run.
+bulk reference calls are amortized across the whole run. An incremental top-up is only
+`ceil(N/12) + C + 2`, where _C_ is the number of new/changed decks: the list paging still
+happens (it is how we detect changes and deletions), but the expensive per-deck fetches
+are limited to what actually changed.
+
+### Local state (no network)
+
+Two things are read/written locally rather than over the wire:
+
+- **Who is logged in.** We read the current user id from MarvelCDB's own
+  `localStorage['user']` (its `app.user.js` caches `{ id, name, … }` there). Same origin,
+  so it is free and needs no request; we only ever read it, and use it to key the cache
+  per account. The first fetched deck's `user_id` is the authoritative fallback.
+- **The deck cache.** Raw decks in IndexedDB keyed `backup:{userId}` (see the
+  incremental-backup doc). This is what lets a top-up re-fetch only what changed while the
+  ZIP is still regenerated in full.
 
 ### Endpoints we deliberately do NOT use
 
@@ -93,8 +112,12 @@ All in `src/transform.js`, ported/adapted from the MarvelCDB source
 - **HTML** — a standalone, print-friendly deck page (decklist grouped by type with
   quantities + subnames, notes rendered from Markdown, the hero's nemesis set). Card
   names link to marvelcdb.com. Self-contained (inline CSS, no images required).
-- **index.html** — a browsable table linking every deck's files (see the
-  index-page feature doc for the planned SAYT/viewer upgrade).
+- **index.html** — a browsable table of every deck (hero, aspect, tags, last-updated),
+  sorted by hero then name, linking each deck's page and all five raw formats. Rows carry
+  `data-*` attributes so a later search-as-you-type / side-sheet upgrade is a pure add-on
+  (see the index-page feature doc). Built from the manifest entries, not the raw decks.
+- **manifest.json** — the machine-readable index: one `buildManifestEntry` per deck
+  (id, name, hero, aspects, tags, `date_update`, file base path, url).
 
 ## Slot ordering note
 
