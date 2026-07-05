@@ -4,13 +4,13 @@ Back up **all your MarvelCDB decks** in one ZIP: cards, metadata, and the Markdo
 write-up that the Text and OCTGN downloads leave out. It works on your unpublished
 decks too. Everything runs in your browser, and nothing is uploaded anywhere.
 
-## Why an extension (and not a plain web page)
+## Why an extension (and not a website)
 
-Reading your personal decks needs your logged-in session. MarvelCDB doesn't send
-cross-origin (CORS) headers, so a normal page on another site isn't allowed to fetch
-them. This extension's content script runs **on marvelcdb.com itself**, where your
-session just works and there's no CORS wall in the way. It only ever reads your own
-decks.
+Your unpublished decks are private to your account, so reading them means being signed
+in. For security, browsers don't let an ordinary website reach into your MarvelCDB
+session from the outside. An extension can, because it works as part of MarvelCDB's own
+pages while you're logged in. That's the only reason this is an extension and not just a
+page you'd visit, and it only ever reads your own decks.
 
 ## Install
 
@@ -73,7 +73,8 @@ anywhere.
 
 ## What's in the ZIP
 
-Five formats per deck, all built from the one raw JSON (see `docs/tech-stack.md`):
+Each deck is saved five different ways, plus a couple of files that index the whole
+backup:
 
 - `decks/{id}-{name}.json`: the complete **raw** deck object (cards, meta, tags,
   write-up) plus its full revision history (`history`: every saved version with its
@@ -93,61 +94,44 @@ Five formats per deck, all built from the one raw JSON (see `docs/tech-stack.md`
   Open this first.
 - `manifest.json`: a machine-readable index of every deck backed up.
 
-This is everything MarvelCDB exposes for a personal deck. A few things aren't included
-because they aren't part of the private deck record: `previous_deck`/`next_deck`/`xp`
-(left out by the site's serializer, and unused for Marvel Champions), published-version
-copies (`children`, which are separate public decklists available via the public API),
-full card text and images (you can derive these from the card database), and
-comments/likes (which only exist on _published_ decklists).
+That's everything MarvelCDB keeps for a personal deck. Re-run it any time, and it always
+pulls a fresh, complete set.
 
-Re-run it any time. It always pulls a fresh, complete set.
+## Security and privacy
 
-## Being a good guest (throttling)
+Being careful about an extension you found online is fair, so here is exactly what this
+one does and doesn't do:
 
-The backup is deliberately gentle on marvelcdb.com:
+- **It runs entirely on your own computer.** There's no server behind it and no account
+  to sign up for. Your decks are read, converted, and saved to a ZIP right in your
+  browser. Nothing is ever uploaded, and there's no tracking or analytics of any kind.
+- **It never sees your password or login.** It doesn't ask you to sign in and it doesn't
+  touch the MarvelCDB login form. It just relies on your browser already being logged
+  in, the same way the site's own pages do. Your username, password, and session are
+  never read, stored, or sent anywhere.
+- **It only talks to marvelcdb.com.** Every request it makes goes to MarvelCDB and
+  nowhere else, only to read your decks and the public card list. It contacts no other
+  websites and no third parties.
+- **It only reads, and only your own decks.** It never edits, deletes, or publishes
+  anything on your account, and it can't see anyone else's private decks.
+- **It stays asleep everywhere except your My Decks page.** The extension has no access
+  to any site other than marvelcdb.com, and even there it only wakes up on your deck
+  list. On every other page and every other website, it does nothing.
+- **It has no outside code.** The whole thing is a handful of small, plain JavaScript
+  files with zero third-party libraries, so there's no hidden dependency that could
+  change under it. Because you loaded it from a folder you downloaded yourself, it also
+  can't quietly update itself later.
+- **You can read every line first.** All of the code is right here in this repository,
+  it's small enough to skim, and nothing is minified or hidden.
 
-- **One request at a time** (no parallel fetching), spaced about 0.6s apart with a
-  little random jitter, so roughly 1.5 requests a second.
-- **Honors `Retry-After`** and backs off exponentially on any `429`/`5xx`, then stays
-  slower for the rest of the run so it never crowds the server.
-- Requests go out as normal first-party calls from your logged-in session, the same
-  thing the site's own pages do, so there's nothing unusual for the server to absorb.
+When you add it, Chrome warns that the extension can "read and change your data on
+marvelcdb.com." That's the permission that lets it read your deck pages in the first
+place, and it's limited to marvelcdb.com. It only ever reads, and it never changes a
+thing on your account.
 
-A few hundred decks take roughly 3 to 5 minutes. If you'd like it slower still, raise
-`MIN_DELAY` near the top of `content.js`.
+## Gentle on MarvelCDB
 
-## How it works
-
-- It enumerates your deck IDs by paging through `/decks/{page}` (using your session
-  cookie, which is sent automatically because the content script is same-origin). The
-  pagination links on those pages give the total page count, which drives the discovery
-  progress bar.
-- It loads the public card database **once** (`/api/public/cards/?encounter=1`) and the
-  pack list once (`/api/public/packs/`), the same endpoints MarvelCDB's own front-end
-  uses, to resolve card codes to names/subtitles/types and to order packs. One bulk
-  fetch each, never per-card or per-deck.
-- For each deck, it fetches `/deck/view/{id}` and extracts the deck object that
-  marvelcdb embeds inline as `app.deck.init({...})`. That's where `description_md`
-  lives, along with the `app.deck_history.init([...])` revision history.
-- It turns that raw deck into `.md`, `.txt` (matching the site's Text export), `.o8d`
-  (matching the OCTGN export), and `.html`, writes the raw `.json`, adds a top-level
-  `index.html`, and packs everything into a ZIP with a small built-in store-only ZIP
-  writer (no external libraries). See `docs/tech-stack.md` for why Text and OCTGN are
-  rebuilt rather than fetched from the (login-gated, per-deck) export endpoints.
-
-## Files
-
-Extraction and transformation live in separate modules (see `docs/tech-stack.md`):
-
-- `manifest.json`: MV3 manifest.
-- `background.js`: routes the toolbar-icon click to the active marvelcdb tab.
-- `content.js`: thin orchestrator that wires the modules into one backup run.
-- `src/extract.js`: **extraction**, meaning all network I/O plus throttling/pause/cancel.
-  It returns raw data only (deck objects, card DB, packs).
-- `src/transform.js`: **transformation**, pure functions that turn raw data into each
-  output format (Markdown, Text, OCTGN, HTML, index).
-- `src/zip.js`: dependency-free ZIP writer.
-- `src/ui.js`: the launcher button and progress panel.
-- `icons/`: the Marvel Champions Codex icon.
-- `docs/`: tech-stack reference and proposed-feature notes (not shipped in the
-  extension zip).
+The downloader is deliberately easy on the site. It fetches one deck at a time with a
+short pause between each, slows down if the server ever asks it to, and only makes the
+same kind of requests MarvelCDB's own pages already do. A few hundred decks take about 3
+to 5 minutes, and there's nothing here that would strain the site.
