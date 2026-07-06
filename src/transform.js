@@ -337,8 +337,11 @@ main{display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap}
 .notes code{background:#f2f2f2;padding:1px 4px;border-radius:4px;font-size:.9em}
 .muted{color:#999}
 footer{margin-top:28px;padding-top:12px;border-top:1px solid #eee;color:#999;font-size:12px}
+.embedded .toplink{display:none}
 @media print{.toplink{display:none}a{color:#000}body{font-size:11pt}.decklist h3{page-break-after:avoid}.decklist li{page-break-inside:avoid}}
-</style></head>
+</style>
+<script>try{if(window.top!==window.self)document.documentElement.className='embedded'}catch(e){document.documentElement.className='embedded'}</script>
+</head>
 <body><div class="wrap">
 <a class="toplink" href="../index.html">← All decks</a>
 <header class="deck">
@@ -374,8 +377,11 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
 
   // ── index.html (browsable table) ─────────────────────────────────────────────
   // opts.backedUpAt is the ISO run timestamp for the header line. Rows carry data-*
-  // attributes so a later search-as-you-type layer is a pure add-on (see
-  // feature-index-page.md). Every backup is complete, so there is no partial-ZIP case.
+  // attributes (including a full-precision data-updated sort key) so the search box,
+  // sortable headers, and side-sheet viewer below are pure JS add-ons: with scripting
+  // off you still get the sorted table and every file link. Every backup is complete,
+  // so there is no partial-ZIP case. Kept white-background and print-clean on purpose
+  // (see feature-index-page.md and the printer-friendly rule in AGENTS.md).
   const INDEX_FORMATS = [
     ['json', 'JSON'],
     ['md', 'MD'],
@@ -383,15 +389,108 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
     ['o8d', 'OCTGN'],
     ['html', 'HTML'],
   ];
+  // Default order: most recently updated on top. Empty dates sink to the bottom.
+  const byUpdatedDesc = (a, b) =>
+    String(b.date_update || '').localeCompare(String(a.date_update || '')) ||
+    String(a.name || '').localeCompare(b.name || '');
+  const INDEX_STYLE = `
+body{margin:0;font:15px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;background:#fff}
+.wrap{max-width:1040px;margin:0 auto;padding:24px}
+h1{font-size:24px;margin:0 0 4px}.sub{color:#777;font-size:13px;margin-bottom:16px}
+.controls{margin:0 0 14px}
+#q{width:100%;box-sizing:border-box;padding:9px 12px;font:inherit;font-size:14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a}
+#q:focus{outline:none;border-color:#1a5fb4;box-shadow:0 0 0 3px rgba(26,95,180,.12)}
+#count{color:#777;font-size:12px;margin-top:6px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #eee;vertical-align:top}
+th{color:#777;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+thead th{position:sticky;top:0;background:#fff;box-shadow:inset 0 -1px 0 #eee;z-index:1}
+th[data-sort]{cursor:pointer;white-space:nowrap;user-select:none}
+th[data-sort]:hover{color:#1a5fb4}
+th[aria-sort=ascending]::after{content:'▲';font-size:9px;color:#1a5fb4;margin-left:5px}
+th[aria-sort=descending]::after{content:'▼';font-size:9px;color:#1a5fb4;margin-left:5px}
+td.u{white-space:nowrap;color:#777;font-variant-numeric:tabular-nums}
+td.f{white-space:nowrap}
+td.f a{font-size:12px;color:#888;margin-right:2px}
+td.f a:hover{color:#1a5fb4}
+a{color:#1a5fb4;text-decoration:none}a:hover{text-decoration:underline}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:#f7f9fc}
+td .deck{font-weight:600}
+#empty{color:#777;font-size:14px;padding:16px 10px}
+#sheet{position:fixed;top:0;right:0;width:min(560px,92vw);height:100%;background:#fff;border-left:1px solid #e2e2e2;box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .18s ease;z-index:10}
+#sheet.open{transform:translateX(0)}
+.sheet-head{display:flex;align-items:center;gap:12px;padding:12px 16px 10px}
+#sheet-title{font-weight:600;font-size:15px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sheet-close{border:0;background:none;font-size:22px;line-height:1;color:#999;cursor:pointer;padding:0 4px}
+#sheet-close:hover{color:#1a1a1a}
+.sheet-sub{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding:0 16px 12px;border-bottom:1px solid #eee;font-size:12px}
+.sheet-sub .lbl{color:#999}
+#sheet-formats a{color:#888;margin-right:2px}
+#sheet-formats a:hover{color:#1a5fb4}
+#sheet-frame{flex:1;width:100%;border:0;background:#fff}
+@media print{.controls,#sheet{display:none!important}thead th{position:static;box-shadow:none}tbody tr{cursor:auto}tbody tr:hover td{background:transparent}tr{break-inside:avoid}th[aria-sort]::after{content:''!important}}
+`;
+  // Vanilla, no-dependency enhancement layer. Written with string concatenation (no
+  // template literals) so it drops cleanly into the page's own template literal.
+  const INDEX_SCRIPT = `
+(function(){
+  var tb=document.querySelector('tbody');if(!tb)return;
+  var rows=[].slice.call(tb.rows),total=rows.length;
+  var q=document.getElementById('q'),count=document.getElementById('count'),empty=document.getElementById('empty');
+  function filter(){
+    var s=(q.value||'').trim().toLowerCase(),shown=0;
+    for(var i=0;i<rows.length;i++){
+      var d=rows[i].dataset,hit=!s||(d.name+' '+d.hero+' '+d.aspect+' '+d.tags).indexOf(s)>-1;
+      rows[i].hidden=!hit;if(hit)shown++;
+    }
+    if(count)count.textContent=(shown===total?total:shown+' of '+total)+' deck'+(total===1?'':'s');
+    if(empty)empty.hidden=shown>0;
+  }
+  if(q)q.addEventListener('input',filter);
+  var key='updated',dir=-1,ths=[].slice.call(document.querySelectorAll('th[data-sort]'));
+  function sort(){
+    rows.slice().sort(function(a,b){
+      var av=a.dataset[key]||'',bv=b.dataset[key]||'';
+      var c=key==='updated'?(av<bv?-1:av>bv?1:0):av.localeCompare(bv);
+      return c*dir;
+    }).forEach(function(r){tb.appendChild(r);});
+    for(var j=0;j<ths.length;j++){
+      if(ths[j].dataset.sort===key)ths[j].setAttribute('aria-sort',dir===1?'ascending':'descending');
+      else ths[j].removeAttribute('aria-sort');
+    }
+  }
+  ths.forEach(function(t){t.addEventListener('click',function(){
+    var nk=t.dataset.sort;
+    if(key===nk)dir=-dir;else{key=nk;dir=nk==='updated'?-1:1;}
+    sort();
+  });});
+  var sheet=document.getElementById('sheet'),frame=document.getElementById('sheet-frame');
+  var title=document.getElementById('sheet-title'),open=document.getElementById('sheet-open'),fmts=document.getElementById('sheet-formats');
+  function hide(){if(sheet)sheet.classList.remove('open');if(frame)frame.src='about:blank';}
+  function preview(tr){
+    var a=tr.querySelector('a.deck');if(!a||!sheet)return;
+    var href=a.getAttribute('href'),f=tr.querySelector('td.f');
+    frame.src=href;title.textContent=a.textContent;open.href=href;
+    if(fmts)fmts.innerHTML=f?f.innerHTML:'';
+    sheet.removeAttribute('hidden');sheet.classList.add('open');
+  }
+  // The whole row is the preview target. Real links inside (the deck name, the
+  // per-format links) keep their normal navigation, so the click falls through.
+  tb.addEventListener('click',function(ev){
+    if(ev.target.closest('a'))return;
+    var tr=ev.target.closest('tr');if(tr&&!tr.hidden)preview(tr);
+  });
+  var close=document.getElementById('sheet-close');
+  if(close)close.addEventListener('click',hide);
+  document.addEventListener('keydown',function(ev){if(ev.key==='Escape')hide();});
+})();
+`;
   function buildIndexHtml(entries, opts) {
     opts = opts || {};
     const rows = entries
       .slice()
-      .sort(
-        (a, b) =>
-          String(a.hero || '').localeCompare(b.hero || '') ||
-          String(a.name || '').localeCompare(b.name || ''),
-      )
+      .sort(byUpdatedDesc)
       .map((e) => {
         // Tolerate the legacy shape ({ file }) as well as the current one ({ base }).
         const base = e.base || (e.file ? e.file.replace(/\.html$/, '') : '');
@@ -409,11 +508,13 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
           esc(aspects.toLowerCase()) +
           '" data-tags="' +
           esc((e.tags || '').toLowerCase()) +
+          '" data-updated="' +
+          esc(e.date_update || '') +
           '"';
         return (
           '<tr' +
           data +
-          '><td><a href="' +
+          '><td><a class="deck" href="' +
           esc(base + '.html') +
           '">' +
           esc(e.name || '(untitled)') +
@@ -432,28 +533,29 @@ ${packStr ? '<div class="packs">Packs: ' + packStr + '</div>' : ''}
       })
       .join('');
     const when = String(opts.backedUpAt || new Date().toISOString()).slice(0, 10);
+    const n = entries.length;
+    const decksLabel = n + ' deck' + (n === 1 ? '' : 's');
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MarvelCDB Deck Downloader (${entries.length} decks)</title>
-<style>
-body{margin:0;font:15px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;background:#fff}
-.wrap{max-width:1040px;margin:0 auto;padding:24px}
-h1{font-size:24px;margin:0 0 4px}.sub{color:#777;font-size:13px;margin-bottom:18px}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #eee;vertical-align:top}
-th{color:#777;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
-td.u{white-space:nowrap;color:#777;font-variant-numeric:tabular-nums}
-td.f{white-space:nowrap}
-td.f a{font-size:12px;color:#888;margin-right:2px}
-td.f a:hover{color:#1a5fb4}
-a{color:#1a5fb4;text-decoration:none}a:hover{text-decoration:underline}
-tr:hover td{background:#f7f9fc}
-</style></head>
+<title>MarvelCDB Deck Downloader (${n} decks)</title>
+<style>${INDEX_STYLE}</style></head>
 <body><div class="wrap">
 <h1>MarvelCDB Deck Downloader</h1>
-<div class="sub">${entries.length} deck${entries.length === 1 ? '' : 's'} · backed up ${when}</div>
-<table><thead><tr><th>Deck</th><th>Hero</th><th>Aspect</th><th>Tags</th><th>Updated</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table>
-</div></body></html>`;
+<div class="sub">Backed up ${when}. Click a row to preview it, the deck name to open its full page, or a header to re-sort.</div>
+<div class="controls">
+<input id="q" type="search" placeholder="Search decks by name, hero, aspect, or tag…" autocomplete="off" aria-label="Search decks">
+<div id="count">${decksLabel}</div>
+</div>
+<table><thead><tr><th data-sort="name">Deck</th><th data-sort="hero">Hero</th><th data-sort="aspect">Aspect</th><th data-sort="tags">Tags</th><th data-sort="updated" aria-sort="descending">Updated</th><th>Files</th></tr></thead><tbody>${rows}</tbody></table>
+<div id="empty" hidden>No decks match your search.</div>
+</div>
+<aside id="sheet" hidden aria-label="Deck preview">
+<div class="sheet-head"><span id="sheet-title"></span><button id="sheet-close" type="button" aria-label="Close preview">×</button></div>
+<div class="sheet-sub"><a id="sheet-open" target="_blank" rel="noopener">Open full page ↗</a><span class="lbl">Files:</span><span id="sheet-formats"></span></div>
+<iframe id="sheet-frame" title="Deck preview"></iframe>
+</aside>
+<script>${INDEX_SCRIPT}</script>
+</body></html>`;
   }
 
   // Minimal, self-contained Markdown → HTML (headings, lists, blockquotes, hr,
