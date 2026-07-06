@@ -1,18 +1,37 @@
 # Feature request: richer HTML index page
 
-**Status:** partly implemented in v1.3.0. The table is now Deck / Hero / Aspect / Tags /
-Updated with a link to each deck's page and to every raw format, and each row carries
-`data-name/hero/aspect/tags` attributes so the search box below is a pure add-on. The
-manifest entry was widened (`buildManifestEntry` in `src/transform.js`) to carry the data
-these columns need, and the index is regenerated complete on every run (including
-incremental top-ups). Still to do from this doc: the search-as-you-type filtering, the
-side-sheet viewer, and sortable columns. When those land, the natural next step is the
-"static `index.html` shell + a regenerated `decks-data.js` loaded via `<script>` (so it
-works over `file://`)" split, which keeps the presentation stable while only the small
-data file changes each run.
+**Status:** done in v1.4.0. The table is Deck / Hero / Aspect / Tags / Updated / Files,
+with a link to each deck's page and to every raw format. Everything below is built by
+`buildIndexHtml` in `src/transform.js` and regenerated complete on every run (including
+incremental top-ups):
 
-The original proposal follows. A basic `index.html` already ships. This describes the
-upgrade.
+- **Default sort is reverse-chronological** (most recently updated on top; decks with no
+  date sink to the bottom). Every row carries `data-name/hero/aspect/tags` plus a
+  full-precision `data-updated` sort key.
+- **Search-as-you-type** across name / hero / aspect / tags, with a live "X of N decks"
+  count.
+- **Sortable columns**: click any header (Deck, Hero, Aspect, Tags, Updated) to sort;
+  click again to flip direction. The active header shows a ▲/▼ caret.
+- **Side-sheet viewer**: clicking anywhere on a **row** (the big, friendly target) opens a
+  right-hand `<aside>` that previews the deck's `.html` in an `<iframe>` (file://-safe,
+  relative src), with an "Open full page" link, per-format quick links, and
+  Escape-to-close. The list stays visible for fast scanning. Clicking the **deck name**
+  (a real link) or any file link navigates instead, so it still works with JS off and
+  prints as a link. The deck page hides its own "All decks" back link when embedded
+  (`html.embedded`, set by a one-line `window.top !== window.self` check) so the preview
+  doesn't offer a way to load the whole index into the side sheet.
+- **Print-clean**: white background throughout; a sticky header and hover/pointer cues for
+  the on-screen viewer, and `@media print` hides the search box and side sheet, drops the
+  sticky/pointer chrome, and avoids splitting rows across pages, so a printout is just the
+  table.
+
+All three enhancements are pure JS add-ons: with scripting off you still get the sorted
+table and every file link. If the inline `<script>`/`<style>` ever grows enough to hurt,
+the next step is the "static `index.html` shell + a regenerated `decks-data.js` loaded via
+`<script>`" split, which keeps the presentation stable while only the small data file
+changes each run.
+
+The original proposal follows, kept for reference.
 
 ## Goal
 
