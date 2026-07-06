@@ -104,7 +104,9 @@ backup:
   from paper. Card names come from MarvelCDB's public card database, fetched once per
   run.
 - `index.html`: a browsable table of every deck in the backup (hero, aspect, tags, last
-  updated), with a link to each deck's page and to every raw format. Open this first.
+  updated), with a link to each deck's page and to every raw format. Newest decks sit on
+  top, but you can sort by any column, search as you type, and click a row to preview the
+  deck right there in a side panel. It stays readable if you print it too. Open this first.
 - `manifest.json`: a machine-readable index of every deck backed up.
 
 That's everything MarvelCDB keeps for a personal deck. **Every ZIP is a complete backup**
