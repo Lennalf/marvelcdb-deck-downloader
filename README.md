@@ -1,8 +1,10 @@
 # MarvelCDB Deck Downloader (Chromium extension)
 
 Back up **all your MarvelCDB decks** in one ZIP: cards, metadata, and the Markdown
-write-up that the Text and OCTGN downloads leave out. It works on your unpublished
-decks too. Everything runs in your browser, and nothing is uploaded anywhere.
+write-up that the Text and OCTGN downloads leave out. You also get a single
+self-contained HTML file with every deck baked in, so you can email it to yourself and
+read your whole collection offline on your phone. It works on your unpublished decks
+too. Everything runs in your browser, and nothing is uploaded anywhere.
 
 ## Why an extension (and not a website)
 
@@ -86,7 +88,7 @@ anywhere.
 
 ## What's in the ZIP
 
-Each deck is saved five different ways, plus a couple of files that index the whole
+Each deck is saved five different ways, plus a few files that index the whole
 backup:
 
 - `decks/{id}-{name}.json`: the complete **raw** deck object (cards, meta, tags,
@@ -99,14 +101,20 @@ backup:
 - `decks/{id}-{name}.html`: a standalone, print-friendly page that reproduces the
   MarvelCDB deck view. Decklist on the left (grouped by type, with quantities and card
   **subtitles** so you can tell apart cards that share a name, like Spider-Man
-  allies), notes on the right, plus the hero's nemesis "Hero set". Card names link to
-  marvelcdb.com. It needs no styling or images, so you can print it and build the deck
-  from paper. Card names come from MarvelCDB's public card database, fetched once per
-  run.
+  allies), notes on the right, plus the hero's nemesis "Hero set". Each card shows its
+  aspect as a colored dot, or a little person icon if it is one of the hero's signature
+  cards, just like MarvelCDB. Card names link to marvelcdb.com. It needs no styling or
+  images, so you can print it and build the deck from paper. Card names come from
+  MarvelCDB's public card database, fetched once per run.
 - `index.html`: a browsable table of every deck in the backup (hero, aspect, tags, last
   updated), with a link to each deck's page and to every raw format. Newest decks sit on
   top, but you can sort by any column, search as you type, and click a row to preview the
   deck right there in a side panel. It stays readable if you print it too. Open this first.
+- `marvelcdb-decks.html`: the same browsable list, but as **one self-contained file** with
+  every deck baked in. This is the one to put on your phone: email it to yourself or drop it
+  on a private web server, and it works fully offline, no folder needed. Tap a deck to read
+  it, search and sort the same way, and switch between light and dark with the button in the
+  corner.
 - `manifest.json`: a machine-readable index of every deck backed up.
 
 That's everything MarvelCDB keeps for a personal deck. **Every ZIP is a complete backup**

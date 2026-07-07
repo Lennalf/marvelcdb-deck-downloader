@@ -200,25 +200,35 @@
     const buildOutputs = () => {
       const files = [];
       const manifest = [];
-      if (!ctx) return { files, manifest };
+      // Keep each deck's rendered page around so the single-file viewer can embed it
+      // without rendering every deck a second time.
+      const deckHtmlById = {};
+      if (!ctx) return { files, manifest, deckHtmlById };
       for (const id of [...enumIds].sort((a, b) => a - b)) {
         const deck = rawFor(id);
         if (!deck) continue;
         const base = 'decks/' + id + '-' + transform.slugify(deck.name);
+        const deckHtml = transform.buildDeckHtml(deck, ctx);
         files.push({ name: base + '.json', data: enc(JSON.stringify(deck, null, 2)) });
         files.push({ name: base + '.md', data: enc(transform.buildMarkdown(deck)) });
         files.push({ name: base + '.txt', data: enc(transform.buildText(deck, ctx)) });
         files.push({ name: base + '.o8d', data: enc(transform.buildOctgn(deck, ctx)) });
-        files.push({ name: base + '.html', data: enc(transform.buildDeckHtml(deck, ctx)) });
+        files.push({ name: base + '.html', data: enc(deckHtml) });
+        deckHtmlById[id] = deckHtml;
         manifest.push(transform.buildManifestEntry(deck, base));
       }
-      return { files, manifest };
+      return { files, manifest, deckHtmlById };
     };
     const packageZip = () => {
-      const { files, manifest } = buildOutputs();
+      const { files, manifest, deckHtmlById } = buildOutputs();
       files.push({
         name: 'index.html',
         data: enc(transform.buildIndexHtml(manifest, { backedUpAt: runStart })),
+      });
+      // One portable file with every deck inlined, for phones or emailing to yourself.
+      files.push({
+        name: 'marvelcdb-decks.html',
+        data: enc(transform.buildViewerHtml(manifest, deckHtmlById, { backedUpAt: runStart })),
       });
       files.push({ name: 'manifest.json', data: enc(JSON.stringify(manifest, null, 2)) });
       return zip.makeZip(files);

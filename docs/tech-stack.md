@@ -110,14 +110,24 @@ All in `src/transform.js`, ported/adapted from the MarvelCDB source
   support, event, upgrade, ally, resource, player_side_scheme. XML, so indentation
   is cosmetic — OCTGN clients parse it regardless.
 - **HTML** — a standalone, print-friendly deck page (decklist grouped by type with
-  quantities + subnames, notes rendered from Markdown, the hero's nemesis set). Card
-  names link to marvelcdb.com. Self-contained (inline CSS, no images required).
+  quantities + subnames, notes rendered from Markdown, the hero's nemesis set). Each card
+  shows a MarvelCDB-style marker: a colored aspect dot, or a person icon for signature
+  (hero-faction) cards, keyed off `card.faction_code`. Card names link to marvelcdb.com.
+  Self-contained (inline CSS, no images required); light/dark theme via CSS variables.
 - **index.html** — a browsable table of every deck (hero, aspect, tags, last-updated),
-  sorted by hero then name, linking each deck's page and all five raw formats. Rows carry
-  `data-*` attributes so a later search-as-you-type / side-sheet upgrade is a pure add-on
-  (see the index-page feature doc). Built from the manifest entries, not the raw decks.
+  reverse-chronological by default, linking each deck's page and all five raw formats.
+  Search-as-you-type, sortable headers, and a side-sheet preview (see the index-page
+  feature doc). Built from the manifest entries, not the raw decks.
+- **marvelcdb-decks.html** — a single self-contained viewer with every deck embedded, for
+  phones or emailing to yourself. Same table as the index, but the side sheet renders each
+  deck from an inline `DECKS` blob via iframe `srcdoc` (no sibling files), so it browses
+  offline from one file. See the single-file viewer feature doc. Built by `buildViewerHtml`.
 - **manifest.json** — the machine-readable index: one `buildManifestEntry` per deck
   (id, name, hero, aspects, tags, `date_update`, file base path, url).
+
+All HTML outputs share one palette expressed as CSS custom properties (`transform.js`),
+with light default, `prefers-color-scheme` dark, a light/dark/auto toggle, and a print
+override that forces white.
 
 ## Slot ordering note
 
